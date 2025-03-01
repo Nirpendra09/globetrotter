@@ -1,17 +1,17 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
+import { useEffect, useState } from "react";
 import ReactConfetti from "react-confetti";
 import {
   FaGlobeAmericas,
-  FaTrophy,
   FaTimesCircle,
+  FaTrophy,
   FaUserFriends,
 } from "react-icons/fa";
-import type { GameDestination, GameState } from "../types";
-import UsernameModal from "./UsernameModal";
+import type { GameDestination } from "../types";
 import ShareModal from "./ShareModal";
+import UsernameModal from "./UsernameModal";
 
 export default function Game() {
   const [currentDestination, setCurrentDestination] =
@@ -128,73 +128,6 @@ export default function Game() {
       );
       setIsLoading(false);
     }
-  };
-
-  // Start new round
-  const startNewRound = () => {
-    setShowFeedback(false);
-    setIsCorrect(false);
-    fetchNewDestination();
-  };
-
-  // Handle answer selection
-  const handleAnswer = (selectedAnswer: string) => {
-    const correct = selectedAnswer === currentDestination?.name;
-    setIsCorrect(correct);
-    setScore((prev) => ({
-      correct: prev.correct + (correct ? 1 : 0),
-      incorrect: prev.incorrect + (correct ? 0 : 1),
-    }));
-    setShowFeedback(true);
-  };
-
-  const pageVariants = {
-    initial: { opacity: 0, y: 20 },
-    animate: {
-      opacity: 1,
-      y: 0,
-      transition: {
-        duration: 0.6,
-        ease: [0.6, -0.05, 0.01, 0.99],
-      },
-    },
-    exit: {
-      opacity: 0,
-      y: -20,
-      transition: { duration: 0.4 },
-    },
-  };
-
-  const containerVariants = {
-    hidden: { opacity: 0, scale: 0.95 },
-    visible: {
-      opacity: 1,
-      scale: 1,
-      transition: {
-        duration: 0.5,
-        ease: [0.6, -0.05, 0.01, 0.99],
-        staggerChildren: 0.1,
-      },
-    },
-  };
-
-  const clueVariants = {
-    hidden: {
-      opacity: 0,
-      x: -40,
-      scale: 0.8,
-    },
-    visible: {
-      opacity: 1,
-      x: 0,
-      scale: 1,
-      transition: {
-        type: "spring",
-        stiffness: 100,
-        damping: 12,
-        mass: 0.5,
-      },
-    },
   };
 
   const optionsContainerVariants = {
