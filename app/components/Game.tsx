@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import ReactConfetti from "react-confetti";
 import {
   FaGlobeAmericas,
@@ -13,10 +13,13 @@ import type { GameDestination } from "../types";
 import ShareModal from "./ShareModal";
 import UsernameModal from "./UsernameModal";
 
+
+const TIMER_DURATION = 15; // sec
+
 export default function Game() {
   const [currentDestination, setCurrentDestination] =
     useState<GameDestination | null>(null);
-  const [score, setScore] = useState({ correct: 0, incorrect: 0 });
+  const [score, setScore] = useState({ correct: 0, incorrect: 0, total: 0 });
   const [showFeedback, setShowFeedback] = useState(false);
   const [isCorrect, setIsCorrect] = useState(false);
   const [options, setOptions] = useState<string[]>([]);
@@ -35,6 +38,16 @@ export default function Game() {
     correct: number;
     incorrect: number;
   } | null>(null);
+
+  const timerRef = useRef(0);
+  const [timerPercentage, setTimerPercentage] = useState(0);
+  const intervalRef = useRef({});
+
+  const [timer, setTimer] = useState(0)
+
+
+  const [consecutiveCorrect, setCosecutiveCorrect] = useState(0);
+
 
   useEffect(() => {
     fetchNewDestination();
@@ -60,6 +73,36 @@ export default function Game() {
     }
   }, []);
 
+  useEffect(() => {
+    const percenetage = (timerRef.current / TIMER_DURATION) * 100
+    console.log("percenetage: ", percenetage)
+    if (percenetage > 99) {
+      handleGuess("skip", true)
+    }
+
+    setTimerPercentage(percenetage)
+  }, [timer])
+
+  const startTimer = () => {
+    stopTimer()
+    timerRef.current = 0;
+    intervalRef.current = setInterval(() => {
+      timerRef.current += 1;
+
+      const percenetage = (timerRef.current / TIMER_DURATION) * 100
+      setTimer(timerRef.current);
+      // calculate percentage
+      console.log("timerref: ", timerRef.current)
+    }, 1000)
+  }
+
+  const stopTimer = () => {
+    if (timerRef.current) {
+      clearInterval(intervalRef.current);
+      timerRef.current = 0;
+    }
+  }
+
   const fetchInviterScore = async (inviterUsername: string) => {
     try {
       console.log(`Fetching score for inviter: ${inviterUsername}`);
@@ -68,8 +111,7 @@ export default function Game() {
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(
-          `Failed to fetch inviter score: ${
-            errorData.error || response.statusText
+          `Failed to fetch inviter score: ${errorData.error || response.statusText
           }`
         );
       }
@@ -85,6 +127,7 @@ export default function Game() {
   // Fetch new destination from API
   const fetchNewDestination = async () => {
     try {
+
       setIsLoading(true);
       setError(null);
       console.log("Fetching new destination...");
@@ -97,7 +140,7 @@ export default function Game() {
       }
 
       const data = await response.json();
-      console.log("Received data:", data);
+      console.log("Received data:", data?.destination?.name);
 
       if (!data.destination) {
         throw new Error("No destination received from API");
@@ -119,6 +162,9 @@ export default function Game() {
       setIsCorrect(false);
       setHasGuessed(false);
       setIsLoading(false);
+
+      // TODO: reset timer and call start timer
+      startTimer();
     } catch (error) {
       console.error("Error fetching destination:", error);
       setError(
@@ -194,21 +240,50 @@ export default function Game() {
     }
   };
 
-  const handleGuess = async (guessedName: string) => {
-    if (!currentDestination || hasGuessed) return;
+  const getNewTotal = (time: number, preScore: number) => {
+    if (time < 5) {
+      return preScore + 50;
+    } else if (time < 10) {
+      return preScore + 25;
+    }
+    return preScore
+  }
 
-    const isGuessCorrect =
-      guessedName.toLowerCase() === currentDestination.name.toLowerCase();
+  const handleGuess = async (guessedName: string, timeout?: boolean) => {
+    if ((!currentDestination || hasGuessed) && !timeout) return;
+
+
+    const isGuessCorrect = !timeout &&
+      guessedName.toLowerCase() === (currentDestination?.name || "").toLowerCase();
     setIsCorrect(isGuessCorrect);
     setShowFeedback(true);
-    setHasGuessed(true);
+
+    let reward = 0
+    if (!timeout && isGuessCorrect) {
+      if (consecutiveCorrect + 1 >= 3) reward = 10
+      setCosecutiveCorrect(prev => {
+        return prev + 1
+      })
+    } else {
+      setCosecutiveCorrect(0)
+    }
+
+    if (!timeout) setHasGuessed(true);
+
+    /* if guessed right then 
+      0 - 5 sec -> 50
+      5-10 sec -> 25
+      otherwise -> 0
+    */
+    let newTotal = getNewTotal(timerRef.current, score.total) + reward;
 
     const newScore = {
       correct: score.correct + (isGuessCorrect ? 1 : 0),
       incorrect: score.incorrect + (isGuessCorrect ? 0 : 1),
+      total: newTotal
     };
     setScore(newScore);
-
+    stopTimer();
     // Update score in database if user is logged in
     if (username) {
       try {
@@ -236,10 +311,14 @@ export default function Game() {
     }
 
     if (isGuessCorrect) {
+
       setWindowSize({
         width: typeof window !== "undefined" ? window.innerWidth : 0,
         height: typeof window !== "undefined" ? window.innerHeight : 0,
       });
+    }
+    if (timeout) {
+      fetchNewDestination()
     }
   };
 
@@ -290,9 +369,8 @@ export default function Game() {
       <motion.div
         initial={{ opacity: 0, scale: 0.8 }}
         animate={{ opacity: 1, scale: 1 }}
-        className={`mt-4 p-4 rounded-lg ${
-          isCorrect ? "bg-green-500/20" : "bg-red-500/20"
-        } backdrop-blur-sm`}
+        className={`mt-4 p-4 rounded-lg ${isCorrect ? "bg-green-500/20" : "bg-red-500/20"
+          } backdrop-blur-sm`}
       >
         <div className="flex items-center justify-center mb-2">
           {isCorrect ? (
@@ -332,7 +410,7 @@ export default function Game() {
     setUsername(newUsername);
     console.log(`Username set to: ${newUsername}`);
 
-    // If the user clicked "Challenge a Friend", show the share modal now
+    // If the user clicked "Challenge a Fri end", show the share modal now
     if (showUsernameModal) {
       setShowUsernameModal(false);
       setShowShareModal(true);
@@ -362,6 +440,12 @@ export default function Game() {
       setShowShareModal(true);
     }
   };
+
+  const getBorderColor = () => {
+    if (timerPercentage <= 33) return 'green'
+    else if (timerPercentage <= 66) return 'orange'
+    else return 'red'
+  }
 
   if (error) {
     return (
@@ -397,8 +481,16 @@ export default function Game() {
             The Globetrotter Challenge
           </h1>
           <div className="flex items-center gap-4">
-            <div className="text-lg">
-              Score: {score.correct}/{score.correct + score.incorrect}
+            <div
+              className="text-lg bg-white shadow rounded text-black p-2 w-[134px]"
+            >
+
+              <div className="text-lg">
+                Score: {score.correct}/{score.correct + score.incorrect}
+              </div>
+              <div>
+                Total: {score.total}
+              </div>
             </div>
             <button
               onClick={handleShareClick}
@@ -408,6 +500,14 @@ export default function Game() {
               Challenge a Friend
             </button>
           </div>
+        </div>
+        <div
+          className="w-full border-2 border-black rounded mb-2 ease-linear"
+          style={{
+            width: `${timerPercentage}%`,
+            borderColor: getBorderColor()
+          }}
+        >
         </div>
 
         {inviterScore && (
@@ -459,6 +559,27 @@ export default function Game() {
         username={username || ""}
         score={score}
       />
+
+
+      {(consecutiveCorrect >= 5 || true) ?
+        <motion.div
+          className="fixed bottom-5 right-5 bg-white rounded p-2"
+          onClick={handleShareClick}
+          initial={{ x: 100 }}
+          animate={{ x: 0 }}
+          transition={{ type: "spring" }}
+        >
+          <p className="text-black cursor-pointer">Challenge a  firend 👆</p>
+        </motion.div>
+        :
+        consecutiveCorrect >= 3 && <motion.div
+          className="fixed bottom-5 right-5 bg-white rounded p-2"
+          initial={{ x: 100 }}
+          animate={{ x: 0 }}
+        >
+          <p className="text-black">🔥 Hot Streak</p>
+        </motion.div>
+      }
     </div>
   );
 }
